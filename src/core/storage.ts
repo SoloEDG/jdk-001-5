@@ -25,11 +25,19 @@ export function saveProjects(projects: PixelProject[]): void {
 }
 
 export function loadPreferences(): EditorPreferences {
-  return readJson<EditorPreferences>(STORAGE_KEYS.preferences, {
+  const defaults: EditorPreferences = {
     activeColor: defaultActiveColor(),
     activeTool: 'brush',
+    shapeFillMode: 'outline',
     activeProjectId: null,
-  })
+  }
+  const stored = readJson<Partial<EditorPreferences>>(STORAGE_KEYS.preferences, {})
+  return {
+    activeColor: typeof stored.activeColor === 'string' ? stored.activeColor : defaults.activeColor,
+    activeTool: stored.activeTool ?? defaults.activeTool,
+    shapeFillMode: stored.shapeFillMode === 'filled' ? 'filled' : 'outline',
+    activeProjectId: stored.activeProjectId ?? null,
+  }
 }
 
 export function savePreferences(prefs: EditorPreferences): void {

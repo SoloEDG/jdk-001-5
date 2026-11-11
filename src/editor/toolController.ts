@@ -5,6 +5,7 @@ import {
   getPixel,
   setPixel,
 } from '../core/pixelGrid'
+import { shapeCellIndices, type ShapeDraft } from '../core/shapes'
 import type { Layer, Pixel, ToolType } from '../core/types'
 
 export interface LinePending {
@@ -81,4 +82,26 @@ export function applyToolAt(ctx: ToolContext, x: number, y: number): ToolResult 
 
 export function cancelLineTool(): LinePending | null {
   return null
+}
+
+/**
+ * Paint a committed shape onto the active layer. Returns null when the whole
+ * shape fell outside the canvas (nothing to commit).
+ */
+export function applyShapeToLayer(
+  layers: Layer[],
+  activeLayerIndex: number,
+  size: number,
+  draft: ShapeDraft,
+  color: Pixel,
+): Layer[] | null {
+  const indices = shapeCellIndices(draft, size)
+  if (indices.length === 0) return null
+
+  return layers.map((layer, index) => {
+    if (index !== activeLayerIndex) return layer
+    const pixels = layer.pixels.slice()
+    for (const pixelIndex of indices) pixels[pixelIndex] = color
+    return { ...layer, pixels }
+  })
 }

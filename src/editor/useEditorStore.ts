@@ -4,6 +4,7 @@ import { exportAllFramesPng, exportFramePng } from '../core/exportPng'
 import { addCustomColor, pushRecentColor } from '../core/paletteService'
 import { compositeLayers } from '../core/pixelGrid'
 import { createProject } from '../core/projectFactory'
+import { isShapeTool, shapeCellIndices, type ShapeDraft } from '../core/shapes'
 import {
   ensureDefaultProject,
   loadPreferences,
@@ -13,7 +14,7 @@ import {
   saveProjects,
   upsertProject,
 } from '../core/storage'
-import type { CanvasSize, PixelProject, ToolType } from '../core/types'
+import type { CanvasSize, PixelProject, ShapeFillMode, ToolType } from '../core/types'
 import { createAnimationPlayer } from './animationPlayer'
 import {
   addFrameToProject,
@@ -25,12 +26,18 @@ import {
   withCanvasSize,
   withFrameLayers,
 } from './projectCommands'
-import { applyToolAt, cancelLineTool, type LinePending } from './toolController'
+import {
+  applyShapeToLayer,
+  applyToolAt,
+  cancelLineTool,
+  type LinePending,
+} from './toolController'
 
 const projects = ref<PixelProject[]>(ensureDefaultProject(loadProjects()))
 const prefs = reactive(loadPreferences())
 
 const linePending = ref<LinePending | null>(null)
+const shapeDraft = ref<ShapeDraft | null>(null)
 const isPlaying = ref(false)
 const previewFrameIndex = ref<number | null>(null)
 
@@ -85,10 +92,21 @@ const compositePixels = computed(() => {
   return compositeLayers(frame.layers, canvasSize.value)
 })
 
+/** Uncommitted shape preview cells, kept separate from project pixels. */
+const shapePreviewIndices = computed(() => {
+  const draft = shapeDraft.value
+  return draft ? shapeCellIndices(draft, canvasSize.value) : []
+})
+
+function cancelShape() {
+  shapeDraft.value = null
+}
+
 watch(
   () => prefs.activeProjectId,
   () => {
     linePending.value = null
+    cancelShape()
     player.stop()
   },
 )
@@ -109,11 +127,18 @@ function setActiveColor(color: string) {
 function setTool(tool: ToolType) {
   prefs.activeTool = tool
   if (tool !== 'line') linePending.value = null
+  cancelShape()
+  persistPrefs()
+}
+
+function setShapeFillMode(mode: ShapeFillMode) {
+  prefs.shapeFillMode = mode
   persistPrefs()
 }
 
 function setCanvasSize(size: CanvasSize) {
   if (!CANVAS_SIZES.includes(size)) return
+  cancelShape()
   mutateProject((p) => withCanvasSize(p, size))
 }
 
@@ -149,19 +174,68 @@ function onCanvasPointer(x: number, y: number) {
   }
 }
 
+function beginShape(x: number, y: number): boolean {
+  const p = activeProject.value
+  const frame = activeFrame.value
+  const tool = prefs.activeTool
+  if (!p || !frame || previewFrameIndex.value !== null || !isShapeTool(tool)) return false
+  linePending.value = null
+  shapeDraft.value = {
+    kind: tool,
+    startX: x,
+    startY: y,
+    endX: x,
+    endY: y,
+    fillMode: prefs.shapeFillMode,
+  }
+  return true
+}
+
+function updateShape(x: number, y: number) {
+  const draft = shapeDraft.value
+  if (!draft || (draft.endX === x && draft.endY === y)) return
+  shapeDraft.value = { ...draft, endX: x, endY: y }
+}
+
+function commitShape() {
+  const draft = shapeDraft.value
+  if (!draft) return
+  shapeDraft.value = null
+
+  const p = activeProject.value
+  const frame = activeFrame.value
+  if (!p || !frame || previewFrameIndex.value !== null) return
+
+  const layers = applyShapeToLayer(
+    frame.layers,
+    p.activeLayerIndex,
+    p.canvasSize,
+    draft,
+    prefs.activeColor,
+  )
+  if (!layers) return
+
+  mutateProject((proj) => withFrameLayers(proj, proj.activeFrameIndex, layers))
+  recordColorUse(prefs.activeColor)
+}
+
 function setActiveLayer(index: number) {
+  cancelShape()
   mutateProject((p) => withActiveLayer(p, index))
 }
 
 function toggleLayerVisible(index: number) {
+  cancelShape()
   mutateProject((p) => toggleLayerVisibility(p, index))
 }
 
 function deleteLayer(index: number) {
+  cancelShape()
   mutateProject((p) => deleteLayerAt(p, index))
 }
 
 function addLayer() {
+  cancelShape()
   mutateProject((p) => addLayerToActiveFrame(p) ?? p)
 }
 
@@ -169,13 +243,16 @@ function setActiveFrame(index: number) {
   previewFrameIndex.value = null
   mutateProject((p) => ({ ...p, activeFrameIndex: index }))
   linePending.value = cancelLineTool()
+  cancelShape()
 }
 
 function addFrame() {
+  cancelShape()
   mutateProject((p) => addFrameToProject(p) ?? p)
 }
 
 function deleteFrame(index: number) {
+  cancelShape()
   mutateProject((p) => deleteFrameAt(p, index))
 }
 
@@ -185,6 +262,7 @@ function setFrameDelay(ms: number) {
 }
 
 function togglePlayback() {
+  cancelShape()
   player.toggle(activeProject.value)
 }
 
@@ -211,6 +289,7 @@ function createNewProject(name?: string) {
   persistProjects()
   persistPrefs()
   linePending.value = null
+  cancelShape()
   player.stop()
 }
 
@@ -218,6 +297,7 @@ function loadProject(id: string) {
   prefs.activeProjectId = id
   persistPrefs()
   linePending.value = null
+  cancelShape()
   player.stop()
 }
 
@@ -232,6 +312,7 @@ function deleteProject(id: string) {
   }
   persistProjects()
   persistPrefs()
+  cancelShape()
   player.stop()
 }
 
@@ -267,12 +348,19 @@ function buildEditorStore() {
     activeFrame,
     compositePixels,
     linePending,
+    shapeDraft,
+    shapePreviewIndices,
     isPlaying,
     previewFrameIndex,
     setActiveColor,
     setTool,
+    setShapeFillMode,
     setCanvasSize,
     onCanvasPointer,
+    beginShape,
+    updateShape,
+    commitShape,
+    cancelShape,
     setActiveLayer,
     toggleLayerVisible,
     deleteLayer,

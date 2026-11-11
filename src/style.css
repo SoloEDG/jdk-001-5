@@ -124,6 +124,27 @@ body {
   color: var(--accent);
 }
 
+.shape-hint {
+  margin-top: 0.35rem;
+  color: var(--accent);
+}
+
+.shape-mode {
+  margin-top: 0.5rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--border);
+}
+
+.shape-mode .hint {
+  display: block;
+  margin-bottom: 0.3rem;
+}
+
+.mode-list {
+  display: flex;
+  gap: 0.35rem;
+}
+
 .swatches {
   display: grid;
   grid-template-columns: repeat(8, 1fr);
@@ -214,6 +235,7 @@ body {
   border: 2px solid var(--border);
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.45);
   background: #1e2128;
+  touch-action: none;
 }
 
 .pixel-cell {

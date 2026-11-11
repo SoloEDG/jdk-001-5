@@ -2,7 +2,16 @@ export type CanvasSize = 16 | 32 | 64
 
 export type Pixel = string | null
 
-export type ToolType = 'brush' | 'eraser' | 'bucket' | 'eyedropper' | 'line'
+export type ShapeKind = 'rectangle' | 'circle'
+export type ShapeFillMode = 'outline' | 'filled'
+
+export type ToolType =
+  | 'brush'
+  | 'eraser'
+  | 'bucket'
+  | 'eyedropper'
+  | 'line'
+  | ShapeKind
 
 export interface Layer {
   id: string
@@ -33,5 +42,6 @@ export interface PixelProject {
 export interface EditorPreferences {
   activeColor: string
   activeTool: ToolType
+  shapeFillMode: ShapeFillMode
   activeProjectId: string | null
 }
